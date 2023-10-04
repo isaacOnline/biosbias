@@ -5,6 +5,7 @@ from multiprocessing import cpu_count
 import time
 import gzip
 import json
+import shutil
 import requests
 import sys
 import pickle as pkl
@@ -13,11 +14,11 @@ import re
 
 MAX_PAGE_LEN = 100 * 1000
 MAX_LINE_LEN = 1000
-MIN_LENGTH = 150 
+MIN_LENGTH = 150
 MAX_PRECEED = 40
 # PREFIXES = {'Col', 'Councillor', 'Dr', 'Lecturer', 'Maj', 'Mr', 'Mrs', 'Ms', 'Prof', 'Professor', 'Professsor'} # change back to set()
 
-COMMON_CRAWL_URL = 'https://commoncrawl.s3.amazonaws.com/'
+COMMON_CRAWL_URL = 'https://data.commoncrawl.org/'
 
 parser = ArgumentParser()
 parser.add_argument('wetpaths',
@@ -73,7 +74,7 @@ def infer_gender(bio):
 
 
 acceptable_prefixes = "adjunct|artist|assistant|associate|attorney|author|bio|biography|brief bio|brief biography|biographical sketch|br|brother|chancellor|chaplain|chapln|col|colonel|councillor|currently|description|director|doctor|dr|experience|facilitator|father|fr|gov|governor|host|image|instructor|lecturer|madam|madame|maj|miss|missus|mister|mme|monsieur|monsignor|mr|mrs|ms|msgr|note|now|pastor|plaintiff|pres|presenter|president|prince|principal|prof|professionally|professor|profile|rabbi|reader|rep|representative|respondent|rev|reverend|reviewer|rev|saint|sen|senator|senor|senora|senorita|sgt|sir|sister|speaker|sr|sra|srta|st|the hon|the honorable|today"
-lname_strip_regex = re.compile(r"^[^a-z]*(?:\b(?:[a-z]|"+ acceptable_prefixes +r")\b[^a-z]*)*", re.I) 
+lname_strip_regex = re.compile(r"^[^a-z]*(?:\b(?:[a-z]|"+ acceptable_prefixes +r")\b[^a-z]*)*", re.I)
 lname_kill_regex = re.compile(r"^(?:about|abstract|additionally|although|and|but|by|comments|example|he|plot|review|she|source|story|summary|synopsis|the|there|today|when|while|yes)\b", re.I)
 rname_regex = re.compile(r"(?:[\b(,\. ]+(?:\(eae\)|[a-z]|ab|abpp|aia|ao|apn|aprn|arnp|asid|asla|ba|bs|bsn|ca|cbe|ccrn|cde|cdn|cdw|ceo|cfo|cipd|clt|cnm|cnp|cpa|cpnp|crnp|csat|cso|cssd|dc|dds|djb|dmd|dnp|e\-?ryt[\- \d]*|edd|esq|faan|facs|faia|fca|fnp|fnp-bc|fnp-c|frcs|ii|iii|iv|jd|jg|jr|lac|ladc|lcpc|lcsw|ld|ldn|licsw|ll|llm|llp|lmft|lmhc|lmt|lp|lpc|ma|mba|mc|md|mfa|mft|mlc|mms|mn|mpas|mph|ms|msn|mw|ncarb|nd|np|np-c|pa-c|pa\-c|ph|phd|pla|pm|psy|psyd|ra|rcyt[\- \d]*|rd|rdn|riba|rla|rn|rn\-bc|ryt|sr)[\b\., )]*)*$", re.I)
 name_regex = re.compile(r"^([A-Z][a-zâêîôûŵŷäëïöüẅÿàèìòùẁỳáéíóúẃý]+(?:\-[A-Z][a-zâêîôûŵŷäëïöüẅÿàèìòùẁỳáéíóúẃý]+)*)( +[A-Z](?:\.|[a-zâêîôûŵŷäëïöüẅÿàèìòùẁỳáéíóúẃý]*))?((?: van)? +(?:Mc|De|O')?[A-Z][a-zâêîôûŵŷäëïöüẅÿàèìòùẁỳáéíóúẃý]+(?:\-[A-Z][a-zâêîôûŵŷäëïöüẅÿàèìòùẁỳáéíóúẃý]+)*)$")
@@ -88,7 +89,7 @@ def extract_name(name):
         return None
     return tuple(g.strip().replace(".", "") if g else "" for g in match.groups())
 
-    
+
 
 def log(text):
     try:
@@ -117,7 +118,7 @@ def extract_bios_from_page(page, URI, max_preceed=MAX_PRECEED, min_len=MIN_LENGT
                 a = line_str.index(ISAN)
                 b = a + len(ISAN)
             else:
-                continue                                   
+                continue
             m = re.match(freq_titles_regex, line_str[b:]) # is an architect
             if not m: # try is an American architect  (1 word before title) also catches boston-based architect
                 c = line_str.find(" ", b)
@@ -129,7 +130,7 @@ def extract_bios_from_page(page, URI, max_preceed=MAX_PRECEED, min_len=MIN_LENGT
                 end = c + 1 + m.end()
             else:
                 end = b + m.end()
-            if m:                    
+            if m:
 #                 if "→" in line_str:
 #                     weird = line_str.index("→")
 #                     if weird<end:
@@ -141,12 +142,12 @@ def extract_bios_from_page(page, URI, max_preceed=MAX_PRECEED, min_len=MIN_LENGT
                     print(f"!!!!!! Strange title: '{title}'")
                     continue
                 g = infer_gender(line_str)
-                if not g or line_str[end:].startswith(",") or line_str[end:].startswith(" and "): # avoid 'is an architect and' or 'is an architect, blah' 
+                if not g or line_str[end:].startswith(",") or line_str[end:].startswith(" and "): # avoid 'is an architect and' or 'is an architect, blah'
                     # maybe add: or line_str[end:].startswith("/") # avoid 'is an architect/designer...'
                     continue
                 if line_str.find("\t", end)!=-1:
                     line_str = line_str[:line_str.find("\t", end)]
-                if len(line_str) > MAX_LINE_LEN: 
+                if len(line_str) > MAX_LINE_LEN:
                     continue
                 m2 = re.search(sentence_end_regex, line_str[end:])
                 if not m2:
@@ -160,7 +161,7 @@ def extract_bios_from_page(page, URI, max_preceed=MAX_PRECEED, min_len=MIN_LENGT
                 name = extract_name(line_str[:a])
                 if not name:
                     continue
-                                 
+
                 matches.append(
                     {"raw": line_str, "name": name, "raw_title": title, "gender": g, "start_pos": start_pos,
                      "title": lower_freq_titles[title.lower()], "URI": URI})
@@ -205,7 +206,7 @@ def chunks(arr, n):
     return [arr[(m * i) // n:(m * (i + 1)) // n] for i in range(n)]
 
 
-def process_urls(paths, n_processes, prefix=COMMON_CRAWL_URL, max_failures=100, num_progress_reports=50):
+def process_urls(paths, n_processes, prefix=COMMON_CRAWL_URL, max_failures=100, num_progress_reports=200):
     print(f"Using {n_processes} parallel processes")
     failed_paths = []
     bios = []
@@ -214,35 +215,53 @@ def process_urls(paths, n_processes, prefix=COMMON_CRAWL_URL, max_failures=100, 
     num_progress_reports = max(1, min(num_progress_reports, len(paths) // n_processes))
     done = 0
     pool = ProcessPool(n_processes)
+    tmp_dir = os.path.join(path_root + 'tmp')
+    os.makedirs(tmp_dir, exist_ok=True)
     for i, paths_chunk in enumerate(chunks(paths, num_progress_reports)):
-        ans = pool.map(bios_from_wet_url, [prefix + path for path in paths_chunk], timeout=1200)
-        iterator = ans.result()
-        for p in paths_chunk + ["done"]:
-            try:
-                a = next(iterator)
-                assert p != "done"
-                if a is not None:
-                    bios += [dict(path=p, **b) for b in a]
-                    continue
-            except StopIteration:
-                assert p == "done"
-                break
-            except Exception as error:
-                print("--------------------\n"*10 + f"function raised {error}")
-            failed_paths.append(p) 
-            
+        output_fname = os.path.join(tmp_dir, f'{i}.pkl')
+        if os.path.exists(output_fname):
+            with open(output_fname, 'rb') as f:
+                batch_bios, batch_failures = pkl.load(f)
+        else:
+            batch_bios = []
+            batch_failures = []
+            ans = pool.map(bios_from_wet_url, [prefix + path for path in paths_chunk], timeout=1200)
+            iterator = ans.result()
+            for p in paths_chunk + ["done"]:
+                try:
+                    a = next(iterator)
+                    assert p != "done"
+                    if a is not None:
+                        batch_bios += [dict(path=p, **b) for b in a]
+                        continue
+                except StopIteration:
+                    assert p == "done"
+                    break
+                except Exception as error:
+                    print("--------------------\n" * 10 + f"function raised {error}")
+                batch_failures.append(p)
+
+            with open(output_fname, "wb") as f:
+                pkl.dump((batch_bios, batch_failures), f)
+                log(f"Wrote {len(bios):,} bios to {output_fname}")
+        bios += batch_bios
+        failed_paths += batch_failures
+
         done += len(paths_chunk)
         pct = (i + 1) / num_progress_reports
         eta = (time.time() - time0) * (1 / pct - 1) / 60 / 60
-        print(
-            f"{eta:.1f} hours left, {done:,}/{len(paths):,} done ({pct:.0%}),",
-            f"{int(len(bios)/pct):,} estimated bios, {path_name}"
+        log(
+            f"{eta:.1f} hours left, {done:,}/{len(paths):,} done ({pct:.0%}),"
+            f"{int(len(bios)/pct):,} estimated bios, "
+            f"{len(failed_paths):,} failed paths, {path_name}"
         )
-        if len(failed_paths) > 0:
-            print(f" {len(failed_paths):,} failed paths")
-            if len(failed_paths) > max_failures:
-                break
+        # if len(failed_paths) > 0:
+        #
+        #     if len(failed_paths) > max_failures:
+        #         break
     pool.close()
+
+    shutil.rmtree(tmp_dir)
     return dedup_exact(bios), failed_paths # dedup_exact is new!
 
 
@@ -271,24 +290,23 @@ if __name__ == "__main__":
 
     output_fname = args.output or (path_root + "bios.pkl")
 
+    if os.path.exists(output_fname):
+        print(f"*** {output_fname} already exists!")
+        sys.exit(1)
+
     assert output_fname.endswith("bios.pkl"), "Output filename must end with 'bios.pkl'"
 
     log_fname = output_fname.replace("bios.pkl", "log.txt")
 
-    try:
-        os.remove(log_fname)
-    except:
-        pass
 
-    bios, failed_paths = process_urls(paths, n_processes=args.parallel)
-    if len(failed_paths) < len(paths) / 10:
-        for i in range(args.retries):
-            if not failed_paths:
-                break
-            print("\n" * 5)
-            print(f"*** Retry #{i+1} with {len(failed_paths)} failures")
-            more_bios, failed_paths = process_urls(failed_paths, n_processes=args.parallel)
-            bios += more_bios
+    bios, failed_paths = process_urls(paths, n_processes=args.parallel, max_failures=1000)
+    for i in range(args.retries):
+        if not failed_paths:
+            break
+        print("\n" * 5)
+        print(f"*** Retry #{i+1} with {len(failed_paths)} failures")
+        more_bios, failed_paths = process_urls(failed_paths, n_processes=args.parallel)
+        bios += more_bios
 
     with open(output_fname, "wb") as f:
         print(f"Wrote {len(bios):,} bios to {output_fname}")
