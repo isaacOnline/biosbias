@@ -1,3 +1,6 @@
+## Notes
+* Train/test/val splits are available [here](https://drive.google.com/drive/folders/1M1nDV1tucm0locFUpnZd3PyPO-mL08pM?usp=drive_link)
+
 # biosbias
 
 This will help recreate the dataset in the following paper:
